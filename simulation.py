@@ -2,14 +2,16 @@ import numpy as np
 import pyglet as pg
 import random
 
+
 window = pg.window.Window()
 graph = {}
 
 class Node:
-    def __init__(self,label,x=0,y=0):
+    def __init__(self,label,x=0,y=0,color=(150,150,150)):
         self.r = 30
         self.x = x
         self.y = y
+        self.color = color
         self.label = label
         self.neighbors = list()
 
@@ -19,6 +21,22 @@ class Node:
             'prob':probability
             })
 
+    def next_state(self):
+        
+        next_node = None
+        if len(self.neighbors) != 0:
+            pick_list = []
+            for neighbor in self.neighbors:
+                temp = [neighbor['Node'].label]*int(neighbor['prob']*10)
+                pick_list.extend(temp)
+            random.shuffle(pick_list)
+            next_node = random.choice(pick_list)
+
+        return next_node
+
+    def reset_color(self):
+        self.color = (150,150,150)
+
     def __str__(self):
         return self.label+':'+str([(n['Node'].label,n['prob']) for n in self.neighbors])
     
@@ -27,9 +45,11 @@ class Node:
 
 
 def get_node(key,graph): 
+    global records
     existing_node = graph.get(key)
     if existing_node==None:
         graph[key] = Node(key)
+        records[key] = 0
         return graph[key]
     return existing_node
 
@@ -45,54 +65,26 @@ def get_graph(path):
         j=1
         for col in row:
             if col>0:
-                neighbor = get_node(prefix+str(j),graph)
+                label = prefix+str(j)
+                if col == 1 and node.label == label :
+                    break
+                neighbor = get_node(label,graph)
                 graph.get(node.label).add_neighbor(neighbor,col)
             j+=1
+    
     return graph
 
-def draw_node(node):
-    batch = pg.graphics.Batch()
-    circle = pg.shapes.Circle(node.x,node.y,node.r,batch=batch)
-    pglabel = pg.text.Label(text=node.label,x=circle.x,y= circle.y,color=(0,0,0,255),
-                                anchor_x='center',anchor_y='center' ,batch=batch)
-    pglabel.bold=True
-    draw_connections(node)
-    batch.draw()
-    
-
-
-def draw_connections(node):
-    
-    for elem in node.neighbors:
-        neighbor = elem['Node']
-        prob = elem['prob']
-
-        arrow = pg.graphics.Batch()
-        destX = neighbor.x
-        destY = neighbor.y
-        
-        line = pg.shapes.Line(node.x,node.y,destX,destY,batch=arrow)
-
-        label = pg.text.Label(text=str(prob),x=(node.x+destX)//2,y=(node.y+destY)//2,
-                    anchor_x='center',anchor_y='center',batch=arrow)
-
-        arrow.draw()
 
 def set_nodes_positions(graph):
-    x = 150
-    y = 150
-    i=1
-    for key in graph.keys():
-        node = graph[key]
-        if node.x==0 and node.y==0:
-            node.x=x
-            node.y=y
-            for elem in node.neighbors:
-                elem['Node'].x = x+ i*200
-                elem['Node'].y = y
-                y +=100
-                x +=50
-                i = -i
+    x = 100
+    y = window.height-50
+    for key in graph:
+        graph[key].x = x
+        graph[key].y = y
+        x+=100
+        if x > window.width:
+            y-= 100
+            x = 100
 
 def find_node_by_coordinates(x,y):
     node = None
@@ -103,12 +95,85 @@ def find_node_by_coordinates(x,y):
 
     return node
 
+def normalized_dist_vector(vec1,vec2):
+    n_dist_vec = vec1
+    if (vec1 != vec2).any():
+        distance_vec = vec2-vec1
+        n_dist_vec = distance_vec / np.sqrt(np.sum(distance_vec**2))
+        n_dist_vec = n_dist_vec*29 + vec1
+
+    return n_dist_vec
+
+def get_label_pos(src,dest):
+    if (src != dest).any():
+        middle = (src+dest)/2
+        d = src-dest
+        d = d / np.sqrt(np.sum(d**2))
+        orth_vec = np.array([-d[1]/d[0],1]) if d[0]!=0 else np.array([1,0])
+        orth_vec = orth_vec / np.sqrt(np.sum(orth_vec**2))
+        pos = middle + orth_vec*15
+        return pos
+    return dest
+
+def draw_nodes(graph):
+    for node in graph.values():
+        draw_connections(node)
+
+    for node in graph.values():
+        circle = pg.shapes.Circle(node.x,node.y,node.r,color=node.color)
+        pglabel = pg.text.Label(text=node.label,x=node.x,y= node.y,color=(0,0,0,255),
+                                    anchor_x='center',anchor_y='center')
+        pglabel.bold=True
+        circle.draw()
+        pglabel.draw()
+
+def draw_connections(node):
+    for elem in node.neighbors:
+        neighbor = elem['Node']
+        prob = elem['prob']
+        arrow = pg.graphics.Batch()
+
+        source = np.array([node.x,node.y])
+        dest = np.array([neighbor.x,neighbor.y])
+
+        line = pg.shapes.Line(node.x,node.y,dest[0],dest[1],width=3,batch=arrow)
+        
+        dist_vector = normalized_dist_vector(dest,source)
+        rec = pg.shapes.Rectangle(dist_vector[0],dist_vector[1],18,18,color=(200,200,200),batch=arrow)
+        rec.anchor_x = rec.width//2
+        rec.anchor_y = rec.height//2
+
+
+        label_pos = get_label_pos(source,dest)
+        label = pg.text.Label(text=str(prob),x=label_pos[0],y=label_pos[1],
+                    anchor_x='center',anchor_y='center',batch=arrow)
+        label.bold = True
+
+        arrow.draw()
+
+records = {}
+def draw_records():
+    labels_batch = pg.graphics.Batch()
+    labels = []
+    xoff = (window.width-100)//len(records)
+    x = xoff
+    for key in records:
+        label = pg.text.Label(text=key + ': '+str(records[key]),x=x,y=30,
+                    anchor_x='center',anchor_y='center',batch=labels_batch)
+        label.bold = True
+        labels.append(label)
+        x+= xoff
+    labels_batch.draw()
+
+
 selectedNode = None
+@window.event
 def on_mouse_press(x,y,button,modifiers):
     global graph,selectedNode
     if button == 1:
         selectedNode = find_node_by_coordinates(x,y)
 
+@window.event
 def on_mouse_drag(x,y,dx,dy,button,modifiers):
     global selectedNode
     if selectedNode!= None:
@@ -118,20 +183,53 @@ def on_mouse_drag(x,y,dx,dy,button,modifiers):
 @window.event
 def on_draw():
     window.clear()
-    global graph
-    for node in graph.values():
-        draw_node(node)
+    draw_nodes(graph)
+    draw_records()
   
+start = False
+current_node_key = None
+previous_node_key = None
+@window.event
+def on_key_press(symbole,modifier):
+    global start,current_node_key,records
+    if symbole==32: #space bar
+        start = not start
+        current_node_key = 'S1'
+        for key in records:
+            records[key] = 0
+
+
+
+
+def start_simulation(value):
+    global graph,current_node_key,previous_node_key,start,records
+    if start:
+        if previous_node_key != None:
+            graph[previous_node_key].reset_color()
+        
+        previous_node_key = current_node_key
+    
+        node = graph[current_node_key]
+        node.color = (200,100,20)
+        records[current_node_key] += 1 
+        next_node_key = node.next_state()
+        
+        if next_node_key != None: 
+            current_node_key = next_node_key
+        else:
+            current_node_key = 'S1'
+        
+
+
 
 def main():
     global graph
-    #pg.clock.schedule_interval(draw, 1/120.0)
-    trans_matrix = 'transition_matrix.csv'#test.csv
-    graph = get_graph(trans_matrix)
-    set_nodes_positions(graph)
     
-    window.on_mouse_drag = on_mouse_drag
-    window.on_mouse_press = on_mouse_press
+    trans_matrix = ['transition_matrix.csv','test.csv']
+    graph = get_graph(trans_matrix[0])
+    set_nodes_positions(graph)
+
+    pg.clock.schedule_interval(start_simulation, 1/5)
     pg.app.run()
 
 if __name__ == "__main__":
