@@ -1,9 +1,9 @@
 import numpy as np
 import pyglet as pg
 import random
+import math
 
-
-window = pg.window.Window()
+window = pg.window.Window(resizable=True)
 graph = {}
 
 class Node:
@@ -27,7 +27,7 @@ class Node:
         if len(self.neighbors) != 0:
             pick_list = []
             for neighbor in self.neighbors:
-                temp = [neighbor['Node'].label]*int(neighbor['prob']*10)
+                temp = [{'key':neighbor['Node'].label,'prob':neighbor['prob']}]*int(neighbor['prob']*10)
                 pick_list.extend(temp)
             random.shuffle(pick_list)
             next_node = random.choice(pick_list)
@@ -66,8 +66,8 @@ def get_graph(path):
         for col in row:
             if col>0:
                 label = prefix+str(j)
-                if col == 1 and node.label == label :
-                    break
+                """ if col == 1 and node.label == label :
+                    break """
                 neighbor = get_node(label,graph)
                 graph.get(node.label).add_neighbor(neighbor,col)
             j+=1
@@ -132,30 +132,33 @@ def draw_connections(node):
         neighbor = elem['Node']
         prob = elem['prob']
         arrow = pg.graphics.Batch()
+        if neighbor.label != node.label:
+            source = np.array([node.x,node.y])
+            dest = np.array([neighbor.x,neighbor.y])
 
-        source = np.array([node.x,node.y])
-        dest = np.array([neighbor.x,neighbor.y])
+            line = pg.shapes.Line(node.x,node.y,dest[0],dest[1],width=3,color=(200,200,200),batch=arrow)
+            
+            dist_vector = normalized_dist_vector(dest,source)
+            rec = pg.shapes.Rectangle(dist_vector[0],dist_vector[1],18,18,color=(200,200,200),batch=arrow)
+            rec.anchor_x = rec.width//2
+            rec.anchor_y = rec.height//2
 
-        line = pg.shapes.Line(node.x,node.y,dest[0],dest[1],width=3,batch=arrow)
-        
-        dist_vector = normalized_dist_vector(dest,source)
-        rec = pg.shapes.Rectangle(dist_vector[0],dist_vector[1],18,18,color=(200,200,200),batch=arrow)
-        rec.anchor_x = rec.width//2
-        rec.anchor_y = rec.height//2
+            label_pos = get_label_pos(source,dest)
+            
+        else :
+            arc = pg.shapes.Arc(node.x-node.r,node.y-node.r,20,batch=arrow)
+            label_pos = (arc.x-node.r,arc.y-node.r)
 
-
-        label_pos = get_label_pos(source,dest)
         label = pg.text.Label(text=str(prob),x=label_pos[0],y=label_pos[1],
-                    anchor_x='center',anchor_y='center',batch=arrow)
+                        anchor_x='center',anchor_y='center',batch=arrow)
         label.bold = True
-
         arrow.draw()
 
 records = {}
 def draw_records():
     labels_batch = pg.graphics.Batch()
     labels = []
-    xoff = (window.width-100)//len(records)
+    xoff = (window.width)//(len(records)+1)
     x = xoff
     for key in records:
         label = pg.text.Label(text=key + ': '+str(records[key]),x=x,y=30,
@@ -187,13 +190,15 @@ def on_draw():
     draw_records()
   
 start = False
-current_node_key = None
+current_node_key = 'S1'
 previous_node_key = None
 @window.event
 def on_key_press(symbole,modifier):
     global start,current_node_key,records
     if symbole==32: #space bar
         start = not start
+        
+    else:
         current_node_key = 'S1'
         for key in records:
             records[key] = 0
@@ -206,18 +211,19 @@ def start_simulation(value):
     if start:
         if previous_node_key != None:
             graph[previous_node_key].reset_color()
-        
+            
         previous_node_key = current_node_key
     
         node = graph[current_node_key]
         node.color = (200,100,20)
-        records[current_node_key] += 1 
-        next_node_key = node.next_state()
+        records[current_node_key] += 1
+       
+        next_node = node.next_state()
         
-        if next_node_key != None: 
-            current_node_key = next_node_key
-        else:
+        if next_node['prob'] == 1 and next_node['key'] == current_node_key: 
             current_node_key = 'S1'
+        else:
+            current_node_key = next_node['key']
         
 
 
@@ -229,7 +235,9 @@ def main():
     graph = get_graph(trans_matrix[0])
     set_nodes_positions(graph)
 
-    pg.clock.schedule_interval(start_simulation, 1/5)
+    pg.clock.schedule_interval(start_simulation,1/5)
+
+    window.set_caption('Markove Chaine Simulation')
     pg.app.run()
 
 if __name__ == "__main__":
