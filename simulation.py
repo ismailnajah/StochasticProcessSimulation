@@ -12,17 +12,20 @@ class Node:
         self.x = x
         self.y = y
         self.color = color
+        self.highlight_color = None
         self.label = label
         self.neighbors = list()
+        self.is_absorbing = False
+        self.is_highlighted = False
 
     def add_neighbor(self,node,probability):
         self.neighbors.append({
             'Node':node,
-            'prob':probability
+            'prob':probability,
+            'color':(200,200,200)
             })
 
     def next_state(self):
-        
         next_node = None
         if len(self.neighbors) != 0:
             pick_list = []
@@ -34,14 +37,50 @@ class Node:
 
         return next_node
 
-    def reset_color(self):
-        self.color = (150,150,150)
+    def reset_color(self,neighbor_index=None):
+        self.color = self.highlight_color if self.is_highlighted  else (150,150,150)
+
+        if neighbor_index!=None:
+            self.neighbors[neighbor_index]['color'] = self.highlight_color if self.is_highlighted else (200,200,200)
 
     def __str__(self):
         return self.label+':'+str([(n['Node'].label,n['prob']) for n in self.neighbors])
     
     def __repr__(self):
         return self.label+':'+str([(n['Node'].label,n['prob']) for n in self.neighbors])
+
+
+class Button:
+    def __init__(self,label,x,y,width=80,height=30,color=(255,255,255)):
+        self.label = label
+        self.x = x
+        self.y = y
+        self.width = width
+        self.height = height
+        self.clicked = False
+        self.color = color
+    
+    def is_clicked(self):
+        return self.clicked
+
+    def click(self,x,y):
+        if self.y <= y <= self.y+self.height and  self.x <= x <= self.x + self.width:
+            self.clicked = not self.clicked
+            return True
+        return False
+
+    def draw(self):
+        batch = pg.graphics.Batch()
+        rec = pg.shapes.Rectangle(self.x,self.y,self.width,self.height,color=self.color,batch=batch)
+        pglabel = pg.text.Label(text=self.label ,x= self.x + rec.width//2,y = self.y + rec.height//2
+                            ,anchor_x='center',anchor_y='center',color=(0,0,0,255),batch=batch)
+        pglabel.bold = True
+        pglabel.font_size = 12
+        batch.draw()
+    
+    def update(self,x,y):
+        self.x = x
+        self.y = y
 
 
 def get_node(key,graph): 
@@ -66,18 +105,17 @@ def get_graph(path):
         for col in row:
             if col>0:
                 label = prefix+str(j)
-                """ if col == 1 and node.label == label :
-                    break """
+                if col == 1 and node.label == label :
+                    node.is_absorbing = True
                 neighbor = get_node(label,graph)
                 graph.get(node.label).add_neighbor(neighbor,col)
             j+=1
     
     return graph
 
-
 def set_nodes_positions(graph):
     x = 100
-    y = window.height-50
+    y = window.height//2
     for key in graph:
         graph[key].x = x
         graph[key].y = y
@@ -85,6 +123,32 @@ def set_nodes_positions(graph):
         if x > window.width:
             y-= 100
             x = 100
+
+
+
+
+def generate_possible_paths(key,visited):
+    paths = []
+    node = graph[key]
+    if node.is_absorbing == True:
+        paths.append( [(node.label,0)] )
+    
+    else:
+        i=0
+        for neighbor in node.neighbors:
+            if neighbor['Node'] in visited:
+                i+=1
+                continue
+            new_paths = generate_possible_paths(neighbor['Node'].label,visited+[neighbor['Node']])
+            for p in new_paths:
+                path = [(node.label,i)] + p
+                paths.append(path)
+            i+=1
+
+    
+    return paths
+
+
 
 def find_node_by_coordinates(x,y):
     node = None
@@ -115,7 +179,9 @@ def get_label_pos(src,dest):
         return pos
     return dest
 
+
 def draw_nodes(graph):
+    
     for node in graph.values():
         draw_connections(node)
 
@@ -128,52 +194,107 @@ def draw_nodes(graph):
         pglabel.draw()
 
 def draw_connections(node):
+    
     for elem in node.neighbors:
         neighbor = elem['Node']
         prob = elem['prob']
+        color = elem['color']
         arrow = pg.graphics.Batch()
+
         if neighbor.label != node.label:
             source = np.array([node.x,node.y])
             dest = np.array([neighbor.x,neighbor.y])
 
-            line = pg.shapes.Line(node.x,node.y,dest[0],dest[1],width=3,color=(200,200,200),batch=arrow)
+            line = pg.shapes.Line(node.x,node.y,dest[0],dest[1],width=3,color=color,batch=arrow)
             
             dist_vector = normalized_dist_vector(dest,source)
-            rec = pg.shapes.Rectangle(dist_vector[0],dist_vector[1],18,18,color=(200,200,200),batch=arrow)
+            rec = pg.shapes.Rectangle(dist_vector[0],dist_vector[1],18,18,color=color,batch=arrow)
             rec.anchor_x = rec.width//2
             rec.anchor_y = rec.height//2
 
             label_pos = get_label_pos(source,dest)
-            
+        
         else :
             arc = pg.shapes.Arc(node.x-node.r,node.y-node.r,20,batch=arrow)
             label_pos = (arc.x-node.r,arc.y-node.r)
+            
 
         label = pg.text.Label(text=str(prob),x=label_pos[0],y=label_pos[1],
                         anchor_x='center',anchor_y='center',batch=arrow)
         label.bold = True
+
         arrow.draw()
+    
 
 records = {}
 def draw_records():
     labels_batch = pg.graphics.Batch()
-    labels = []
     xoff = (window.width)//(len(records)+1)
     x = xoff
     for key in records:
         label = pg.text.Label(text=key + ': '+str(records[key]),x=x,y=30,
                     anchor_x='center',anchor_y='center',batch=labels_batch)
         label.bold = True
-        labels.append(label)
         x+= xoff
     labels_batch.draw()
 
+
+possible_paths = []
+def highlight_path(index,highlghit):
+    
+    for elem in possible_paths[index]:
+        node_label = elem[0]
+        neighbor_index = elem[1]
+        node = graph[node_label]
+        node.is_highlighted = highlghit
+        if highlghit:
+            node.color = (255,255,0)
+            node.highlight_color = (255,255,0)
+            node.neighbors[neighbor_index]['color'] = (255,255,0)
+        else:
+            node.reset_color(neighbor_index)
+
+
+
+buttons = []
+def create_highlghit_buttons():
+    global buttons
+    xoff = (window.width)//(len(possible_paths)+1)
+    x = xoff
+    y = window.height-50
+    for i in range(len(possible_paths)):
+        button = Button('Path '+str(i+1),x,y)
+        buttons.append(button)
+        x+= xoff
+
+
+def draw_highlight_buttons():
+    xoff = (window.width)//(len(possible_paths)+1)
+    x = xoff
+    y = window.height-50
+
+    for button in buttons:
+        button.update(x,y)
+        button.draw()
+        x+= xoff
 
 selectedNode = None
 @window.event
 def on_mouse_press(x,y,button,modifiers):
     global graph,selectedNode
     if button == 1:
+        i=0
+        for b in buttons:
+            if b.click(x,y):
+                if b.is_clicked():
+                    b.color = (255,255,0)
+                else:
+                    b.color = (255,255,255)
+
+                highlight_path(i,b.is_clicked())
+                break
+            i+=1
+            
         selectedNode = find_node_by_coordinates(x,y)
 
 @window.event
@@ -188,7 +309,9 @@ def on_draw():
     window.clear()
     draw_nodes(graph)
     draw_records()
-  
+    draw_highlight_buttons()
+
+
 start = False
 current_node_key = 'S1'
 previous_node_key = None
@@ -229,11 +352,15 @@ def start_simulation(value):
 
 
 def main():
-    global graph
+    global graph,possible_paths
     
     trans_matrix = ['transition_matrix.csv','test.csv']
     graph = get_graph(trans_matrix[0])
     set_nodes_positions(graph)
+    
+
+    possible_paths = generate_possible_paths('S1',visited=[graph['S1']])
+    create_highlghit_buttons()
 
     pg.clock.schedule_interval(start_simulation,1/5)
 
