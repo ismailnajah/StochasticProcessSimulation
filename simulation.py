@@ -51,7 +51,7 @@ class Node:
 
 
 class Button:
-    def __init__(self,label,x,y,width=80,height=30,color=(255,255,255)):
+    def __init__(self,label,x,y,width=180,height=30,color=(255,255,255)):
         self.label = label
         self.x = x
         self.y = y
@@ -113,6 +113,7 @@ def get_graph(path):
     
     return graph
 
+
 def set_nodes_positions(graph):
     x = 100
     y = window.height//2
@@ -123,8 +124,6 @@ def set_nodes_positions(graph):
         if x > window.width:
             y-= 100
             x = 100
-
-
 
 
 def generate_possible_paths(key,visited):
@@ -148,7 +147,25 @@ def generate_possible_paths(key,visited):
     
     return paths
 
+def compute_path_probability(path):
+    prob = 1
+    for elem in path:
+        prob *= graph[elem[0]].neighbors[elem[1]]['prob']
 
+    return prob
+
+
+def paths_probabilities():
+    i = 0
+    probs = []
+    for path in possible_paths:
+        probs.append({
+            'index' : i,
+            'prob': compute_path_probability(path)
+        })
+        i+=1
+    
+    return sorted(probs,reverse=True,key=lambda elem: elem['prob'])
 
 def find_node_by_coordinates(x,y):
     node = None
@@ -241,8 +258,8 @@ def draw_records():
 
 possible_paths = []
 def highlight_path(index,highlghit):
-    
-    for elem in possible_paths[index]:
+    path = possible_paths[index]['path']
+    for elem in path:
         node_label = elem[0]
         neighbor_index = elem[1]
         node = graph[node_label]
@@ -259,18 +276,16 @@ def highlight_path(index,highlghit):
 buttons = []
 def create_highlghit_buttons():
     global buttons
-    xoff = (window.width)//(len(possible_paths)+1)
-    x = xoff
-    y = window.height-50
-    for i in range(len(possible_paths)):
-        button = Button('Path '+str(i+1),x,y)
+    i=1
+    for path in possible_paths:
+        label = 'Path {:d} : {:2.2f}%'.format(i,path['prob']*100)
+        button = Button(label,0,0)
         buttons.append(button)
-        x+= xoff
-
+        i+=1
 
 def draw_highlight_buttons():
     xoff = (window.width)//(len(possible_paths)+1)
-    x = xoff
+    x = xoff//2
     y = window.height-50
 
     for button in buttons:
@@ -327,8 +342,6 @@ def on_key_press(symbole,modifier):
             records[key] = 0
 
 
-
-
 def start_simulation(value):
     global graph,current_node_key,previous_node_key,start,records
     if start:
@@ -349,17 +362,28 @@ def start_simulation(value):
             current_node_key = next_node['key']
         
 
-
-
 def main():
     global graph,possible_paths
     
-    trans_matrix = ['transition_matrix.csv','test.csv']
-    graph = get_graph(trans_matrix[0])
+    trans_matrix = ['transition_matrix.csv','transition-matrix.csv','test.csv']
+    graph = get_graph(trans_matrix[1])
     set_nodes_positions(graph)
     
 
     possible_paths = generate_possible_paths('S1',visited=[graph['S1']])
+    probabilities = paths_probabilities()
+    new_paths = []
+
+    n = len(possible_paths)
+    print('possible paths :' + str(n))
+    max_paths = 5 if n>5 else n
+    for i in range(max_paths):
+        new_paths.append({
+            'path' : possible_paths[probabilities[i]['index']],
+            'prob' : probabilities[i]['prob']
+        })
+
+    possible_paths = new_paths
     create_highlghit_buttons()
 
     pg.clock.schedule_interval(start_simulation,1/5)
